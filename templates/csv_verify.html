@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CSV Email Verification</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f7fa;
+        }
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .container {
+            background-color: #fff;
+            border-radius: 8px;
+            padding: 30px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+        }
+        .file-input {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 16px;
+        }
+        button {
+            background-color: #3498db;
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: #2980b9;
+        }
+        button:disabled {
+            background-color: #95a5a6;
+            cursor: not-allowed;
+        }
+        .progress-container {
+            margin-top: 30px;
+            display: none;
+        }
+        .progress-bar {
+            height: 20px;
+            background-color: #ecf0f1;
+            border-radius: 10px;
+            margin-bottom: 10px;
+            overflow: hidden;
+        }
+        .progress {
+            height: 100%;
+            background-color: #2ecc71;
+            width: 0%;
+            transition: width 0.3s;
+        }
+        .progress-text {
+            text-align: center;
+            font-weight: 600;
+        }
+        .log-container {
+            margin-top: 20px;
+            max-height: 200px;
+            overflow-y: auto;
+            background-color: #f8f9fa;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 10px;
+            font-family: monospace;
+        }
+        .download-container {
+            margin-top: 30px;
+            display: none;
+            text-align: center;
+        }
+        .download-btn {
+            margin: 0 10px;
+            background-color: #27ae60;
+        }
+        .cancel-btn {
+            background-color: #e74c3c;
+        }
+        .note {
+            font-size: 14px;
+            color: #7f8c8d;
+            margin-top: 30px;
+            font-style: italic;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>CSV Email Verification Tool</h1>
+        
+        <div id="upload-form">
+            <div class="form-group">
+                <label for="csv-file">Upload CSV file with email addresses:</label>
+                <input type="file" id="csv-file" class="file-input" accept=".csv" required>
+                <p>CSV file must have a column named "email"</p>
+            </div>
+            
+            <button id="verify-btn">Verify Emails</button>
+        </div>
+        
+        <div id="progress-container" class="progress-container">
+            <h2>Verification in Progress</h2>
+            <div class="progress-bar">
+                <div id="progress" class="progress"></div>
+            </div>
+            <div id="progress-text" class="progress-text">0%</div>
+            <div id="progress-details">Processing row 0 of 0</div>
+            
+            <div class="log-container">
+                <div id="log"></div>
+            </div>
+            
+            <button id="cancel-btn" class="cancel-btn">Cancel Verification</button>
+        </div>
+        
+        <div id="download-container" class="download-container">
+            <h2>Verification Complete!</h2>
+            <p>Download your results:</p>
+            <button id="download-all" class="download-btn">All Results</button>
+            <button id="download-valid" class="download-btn">Valid Emails Only</button>
+            <button id="download-risky" class="download-btn">Risky Emails Only</button>
+            <button id="download-risky-invalid" class="download-btn">Risky & Invalid Emails</button>
+        </div>
+        
+        <div class="note">
+            <p><strong>Note:</strong> This tool performs verification checks on email addresses in your CSV file. The verification includes syntax validation, domain checks, MX record validation, and SMTP server checks.</p>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const verifyBtn = document.getElementById('verify-btn');
+            const csvFileInput = document.getElementById('csv-file');
+            const uploadForm = document.getElementById('upload-form');
+            const progressContainer = document.getElementById('progress-container');
+            const progressBar = document.getElementById('progress');
+            const progressText = document.getElementById('progress-text');
+            const progressDetails = document.getElementById('progress-details');
+            const logContainer = document.getElementById('log');
+            const cancelBtn = document.getElementById('cancel-btn');
+            const downloadContainer = document.getElementById('download-container');
+            const downloadAllBtn = document.getElementById('download-all');
+            const downloadValidBtn = document.getElementById('download-valid');
+            const downloadRiskyBtn = document.getElementById('download-risky');
+            const downloadRiskyInvalidBtn = document.getElementById('download-risky-invalid');
+            
+            let jobId = null;
+            let progressInterval = null;
+            let logInterval = null;
+            
+            verifyBtn.addEventListener('click', function() {
+                const file = csvFileInput.files[0];
+                if (!file) {
+                    alert('Please select a CSV file');
+                    return;
+                }
+                
+                const formData = new FormData();
+                formData.append('file', file);
+                
+                // Show progress container
+                uploadForm.style.display = 'none';
+                progressContainer.style.display = 'block';
+                downloadContainer.style.display = 'none';
+                
+                // Start verification
+                fetch('/verify', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => response.json())
+                .then(data => {
+                    jobId = data.job_id;
+                    startProgressTracking();
+                    startLogTracking();
+                })
+                .catch(error => {
+                    alert('Error starting verification: ' + error.message);
+                    uploadForm.style.display = 'block';
+                    progressContainer.style.display = 'none';
+                });
+            });
+            
+            function startProgressTracking() {
+                progressInterval = setInterval(() => {
+                    if (!jobId) return;
+                    
+                    fetch(`/progress?job_id=${jobId}`)
+                        .then(response => response.json())
+                        .then(data => {
+                            const percent = data.percent;
+                            progressBar.style.width = `${percent}%`;
+                            progressText.textContent = `${percent}%`;
+                            progressDetails.textContent = `Processing row ${data.row} of ${data.total}`;
+                            
+                            if (percent >= 100) {
+                                clearInterval(progressInterval);
+                                clearInterval(logInterval);
+                                showDownloadOptions();
+                            }
+                        })
+                        .catch(error => {
+                            console.error('Error tracking progress:', error);
+                        });
+                }, 1000);
+            }
+            
+            function startLogTracking() {
+                logInterval = setInterval(() => {
+                    if (!jobId) return;
+                    
+                    fetch(`/log?job_id=${jobId}`)
+                        .then(response => response.text())
+                        .then(log => {
+                            if (log) {
+                                logContainer.textContent = log;
+                                logContainer.scrollTop = logContainer.scrollHeight;
+                            }
+                        })
+                        .catch(error => {
+                            console.error('Error tracking log:', error);
+                        });
+                }, 1000);
+            }
+            
+            function showDownloadOptions() {
+                progressContainer.style.display = 'none';
+                downloadContainer.style.display = 'block';
+            }
+            
+            cancelBtn.addEventListener('click', function() {
+                if (!jobId) return;
+                
+                fetch(`/cancel?job_id=${jobId}`, {
+                    method: 'POST'
+                })
+                .then(() => {
+                    clearInterval(progressInterval);
+                    clearInterval(logInterval);
+                    uploadForm.style.display = 'block';
+                    progressContainer.style.display = 'none';
+                    downloadContainer.style.display = 'none';
+                })
+                .catch(error => {
+                    alert('Error canceling job: ' + error.message);
+                });
+            });
+            
+            downloadAllBtn.addEventListener('click', function() {
+                window.location.href = `/download?job_id=${jobId}&type=all`;
+            });
+            
+            downloadValidBtn.addEventListener('click', function() {
+                window.location.href = `/download?job_id=${jobId}&type=valid`;
+            });
+            
+            downloadRiskyBtn.addEventListener('click', function() {
+                window.location.href = `/download?job_id=${jobId}&type=risky`;
+            });
+            
+            downloadRiskyInvalidBtn.addEventListener('click', function() {
+                window.location.href = `/download?job_id=${jobId}&type=risky_invalid`;
+            });
+        });
+    </script>
+</body>
+</html>
